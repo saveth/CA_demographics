@@ -1,0 +1,70 @@
+---
+title: "California Population"
+author: "Savet Hong"
+date: format(Sys.Date(), "%b %d, %Y")
+output: html_document
+#output: 
+#  flexdashboard::flex_dashboard:
+#  orientation: columns
+---
+
+## California Population
+
+ 
+
+```{r setup, echo=TRUE, include= FALSE}
+library(dplyr)
+library(XML)
+library(reshape2)
+library(plyr)
+library(ggplot2)
+
+source(acs_data.R)
+
+```
+
+** The graph below shows the population trend over time. OVerall, California's  growth....
+
+```{r ca-trend, include=TRUE}
+# https://rpubs.com/walkerke/india_pyramid
+# http://klein.uk/teaching/viz/datavis-pyramids/
+
+
+```
+
+** The share of the population is steadily....
+
+```{r ca-pyramid-pop, include=TRUE}
+
+
+
+```
+
+## Distribution Across Counties
+
+** The population across CA seems to be concentrated...
+
+```{r ca-geo-pop, include=TRUE}
+
+
+
+```
+
+** In terms of age distribution, there is a higher concentration of ....
+
+```{r ca-geo-age, include=TRUE}
+
+
+
+```
+
+
+## Discrepencies in Sex Ratio?
+
+** There appears to be more young male....
+
+```{r ca-sr, include=TRUE}
+
+
+
+```
