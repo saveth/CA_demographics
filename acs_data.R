@@ -1,4 +1,5 @@
 
+##  Census site for variables/tables/ details: https://www.census.gov/data/developers/data-sets.html
 
 
 ######################
@@ -6,7 +7,7 @@
 ######################
 
 # CA State only
-sacs <- function(year){
+ca.acs <- function(year){
     sacs_single <- function(year_sing){
       sex.age.m <- acs.lookup(table.number = "B01001", endyear = year_sing, keyword = "Male")[-1]
       sex.age.f <- acs.lookup(table.number = "B01001", endyear = year_sing, keyword = "Female")[-1]
@@ -33,12 +34,12 @@ sacs <- function(year){
                                     "65.and.66.years"="65.to.69.years",
                                     "67.to.69.years"="65.to.69.years"))) %>%
         group_by(Year,Sex, Age) %>%
-        summarise(Population =sum(Population))
-      
-      ca.long$Age <- gsub(".years","",ca.long$Age)
-      ca.long$Age <- gsub(".to.","-",ca.long$Age)
-      ca.long$Age[ca.long$Age=="Under.5"] <- "0-4"
-      ca.long$Age[ca.long$Age=="85.and.over"] <- "85+"
+        summarise(Population =sum(Population)) %>%
+        mutate(Age =as.character(Age),
+               Age = sub("\\.years","",Age),
+               Age = sub("\\.to\\.","-", Age),
+               Age = sub("Under\\.5", "0-4", Age),
+               Age = sub("85[\\.[:alpha:]].+", "85+", Age)) 
       
       return(ca.long)
     }
@@ -50,7 +51,7 @@ sacs <- function(year){
 
 
 #CA ALL County level data
-cacs <- function(year){
+cnty.acs <- function(year){
   cacs_single <- function(year_sing){
     sex.age.m <- acs.lookup(table.number = "B01001", endyear = year_sing, keyword = "Male")[-1]
     sex.age.f <- acs.lookup(table.number = "B01001", endyear = year_sing, keyword = "Female")[-1]
@@ -80,12 +81,12 @@ cacs <- function(year){
                                   "65.and.66.years"="65.to.69.years",
                                   "67.to.69.years"="65.to.69.years"))) %>%
       group_by(Year,County,Sex, Age) %>%
-      summarise(Population =sum(Population))
-    
-    ca.long$Age <- gsub(".years","",ca.long$Age)
-    ca.long$Age <- gsub(".to.","-",ca.long$Age)
-    ca.long$Age[ca.long$Age=="Under.5"] <- "0-4"
-    ca.long$Age[ca.long$Age=="85.and.over"] <- "85+"
+      summarise(Population =sum(Population)) %>%
+      mutate(Age =as.character(Age),
+             Age = sub("\\.years","",Age),
+             Age = sub("\\.to\\.","-", Age),
+             Age = sub("Under\\.5", "0-4", Age),
+             Age = sub("85[\\.[:alpha:]].+", "85+", Age)) 
     
     return(ca.long)
   }
@@ -98,7 +99,7 @@ cacs <- function(year){
 
 
 # Add in proportion and Sex Ratio into Dataframe : State
-sdata <- function(df){
+ca.sr <- function(df){
   df <- df %>%
     group_by(Year, Sex) %>%
     mutate(Proportion = Population/sum(Population)) %>%
@@ -108,11 +109,11 @@ sdata <- function(df){
 
 
 # Add in proportion and Sex Ratio into Dataframe : county
-sdata <- function(df){
+cnty.sr <- function(df){
   df <- df %>%
-    group_by(Year, Sex) %>%
+    group_by(Year,County, Sex) %>%
     mutate(Proportion = Population/sum(Population)) %>%
-    group_by(Year, Age) %>%
+    group_by(Year, County, Age) %>%
     mutate(SexRatio = Population[Sex=="Male"]/Population[Sex=="Female"])
 }
 

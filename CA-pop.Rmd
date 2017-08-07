@@ -2,46 +2,102 @@
 title: "California Population"
 author: "Savet Hong"
 date: format(Sys.Date(), "%b %d, %Y")
-output: html_document
-#output: 
-#  flexdashboard::flex_dashboard:
+#output: html_document
+output: 
+  flexdashboard::flex_dashboard:
 #  orientation: columns
 ---
 
-## California Population
-
+California Population
+===================================== 
+```{r}
+# http://www.dof.ca.gov/Reports/Demographic_Reports/
+## CA Department of finance proive 17 decennial census data for counties, cites of Ca
+##  Only aggregated population level data, not broken down by age and sex
+```
  
 
-```{r setup, echo=TRUE, include= FALSE}
-library(dplyr)
-library(XML)
+```{r setup, echo=FALSE, include= FALSE}
+library(tidyverse)
+#library(XML)
 library(reshape2)
-library(plyr)
-library(ggplot2)
-
-source(acs_data.R)
+library(acs)
+source('acs_data.R')
 
 ```
 
 ** The graph below shows the population trend over time. OVerall, California's  growth....
 
 ```{r ca-trend, include=TRUE}
-# https://rpubs.com/walkerke/india_pyramid
-# http://klein.uk/teaching/viz/datavis-pyramids/
 
+ca09_15 <- ca.acs(c(seq(2009,2015,1)))
 
+ca09_15_syr <- bind_rows(
+  ca09_15_syr <- ca09_15 %>%
+    group_by(Year,Sex) %>%
+    summarise(Population = sum(Population)),
+  ca09_15_syr %>% 
+    group_by(Year) %>%
+    summarise(Sex="Total", Population =sum(Population))
+  ) %>% arrange(Year, Sex)
+
+ggplot(ca09_15_syr, aes(x = Year, y = Population, colour = Sex)) +
+  geom_line()
+  
+ggplot(ca09_15_syr[ca09_15_syr$Sex!='Total',], aes(x = Year, y = Population, colour = Sex)) +
+  geom_line()
 ```
 
 ** The share of the population is steadily....
 
 ```{r ca-pyramid-pop, include=TRUE}
+# https://rpubs.com/walkerke/india_pyramid
+# http://klein.uk/teaching/viz/datavis-pyramids/
 
+ca09_15pyr <- ca09_15 %>%
+  ungroup() %>%
+  mutate(Population = ifelse(Sex=="Male", -1*Population,Population))
+
+ca09_15_prop <- ca.sr(ca09_15)
+
+ggplot(ca09_15pyr[ca09_15pyr$Year==2015,], aes(x = Age, y = Population, fill= Sex)) +
+  geom_bar(stat = "identity") +
+  coord_flip()
 
 
 ```
 
-## Distribution Across Counties
 
+```{r CA-data setup, include=FALSE}
+# CA population data is collected by the Department of Finance and can be found here:
+# http://www.dof.ca.gov/Reports/Demographic_Reports/
+
+dof_table <- read_excel("2010-1850_STCO_IncCities-FINAL.xls", sheet = "1850-2010", skip = 2)
+
+dof_table <- dof_table %>%
+  setNames(gsub("\\s", "_", names(.)) ) %>%
+  setNames(gsub("\\.", "", names(.)) ) %>%
+  setNames(gsub("\\_+", "_", names(.)) ) %>%
+  setNames(gsub("_\\(.*$", "", names(.)) ) %>%
+  #setNames(sub("(.)$", "\\1`", names(.)) ) %>%
+  setNames(gsub("_[[:digit:]]+,_", "", names(.)) ) %>%
+  filter(!is.na(`Incorpora-_tion_Date`)) %>%
+  select(-Incorporated_City_or_Town,-`Incorpora-_tion_Date`, -sumlvl, -Place_ID, -GeoID) %>%
+  mutate_at(grep("[[:digit:]]", names(.)), funs(as.numeric)) %>%
+  mutate_each(funs(round(.,0)), grep("[[:digit:]]", names(.))) %>%
+  group_by(County, county_FIPS) %>%
+  #summarise_at(grep("[[:digit:]]", names(.)),funs(sum(!is.na(.))))
+  summarise_at(vars(-County, -county_FIPS) ,funs(sum(., na.rm = TRUE)))
+  
+ca.total <- apply(dof_table[,-c(1:2)],2, sum)
+```
+
+
+
+AGE
+===================================== 
+
+## Distribution Across Counti
 ** The population across CA seems to be concentrated...
 
 ```{r ca-geo-pop, include=TRUE}
@@ -58,6 +114,9 @@ source(acs_data.R)
 
 ```
 
+
+SEX
+===================================== 
 
 ## Discrepencies in Sex Ratio?
 
