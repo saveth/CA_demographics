@@ -1,0 +1,149 @@
+---
+title: "2019 CA Population"
+author: "Savet Hong"
+date: "2/3/2021"
+output: html_document
+---
+
+```{r library, include=FALSE}
+library(censusapi)
+library(tidyverse)
+library(choroplethr)
+library(choroplethrMaps)
+
+Sys.getenv("CENSUS_KEY")
+
+```
+
+
+```{r setup, include=FALSE}
+
+# Get Metadata list of group variables B01001
+group_B01001 <- listCensusMetadata(
+  name = "acs/acs5",
+  vintage = 2017,
+  type = "variables",
+  group = "B01001")
+head(group_B01001)
+
+# Create df of labels from metadata
+agesexlab <- group_B01001 %>%
+  separate(label, c("type", "total", "gender", "age_group"), "!!") %>%
+  mutate(start_age = sub("^([0-9]+) .*", "\\1", age_group),
+         start_age = replace( start_age,start_age == "Under 5 years", 0),
+         end_age = sub("^([0-9]+) .+ ([0-9]+) .*", "\\2", age_group),
+         end_age = sub("^([0-9]+) .*", "\\1", end_age),
+         end_age = replace( end_age, end_age == "Under 5 years", 5),
+         start_age = as.numeric(start_age),
+         end_age = as.numeric(end_age),
+         gender = replace(gender, is.na(gender) & concept == "SEX BY AGE", "Both")) %>%
+  select(-(predicateType:predicateOnly)) %>%
+  filter(grepl("^Estimate", type))
+```
+
+
+```{r data19, include=FALSE}
+# Get CA County Population: Sex by Age
+acs19pop <- getCensus(
+  name = "acs/acs5", 
+  vintage = 2019, 
+  vars = c("NAME", "group(B01001)"), 
+  region = "county:*", 
+  regionin = "state:06"
+)
+
+# Categorize 3 age group for analysis
+acs19pop_clean <- acs19pop %>%
+  gather(name, values, contains("B01001")) %>%
+  separate(NAME, c("county_name", "state_name"), ",") %>%
+  inner_join(agesexlab, by = "name") %>%
+  mutate(age_band = case_when( start_age < 18 ~ "Age 0-17",
+                               start_age >= 18 & start_age < 65 ~ "Age 18-64",
+                               start_age >= 65 ~ "Age 65+",
+                               TRUE ~ "NA"))
+
+# Calculate proportion
+acs19group <- acs19pop_clean %>%
+  mutate(values = as.numeric(values)) %>%
+  filter(age_band != "NA") %>% # Remove population for both gender 
+  group_by(state, county, county_name, state_name, GEO_ID, age_band) %>%
+  summarise(pop = sum(values)) %>%
+  group_by(state, county, county_name, state_name, GEO_ID) %>%
+  mutate( prop_county = 100 * round(pop / sum(pop), 3)) %>% # Percent of population within county
+  group_by(state, state_name, age_band) %>%
+  mutate(prop_gp_state = 100 * round(pop / sum(pop), 3)) %>% # Percent of population within age_band in state
+  group_by(state, state_name) %>%
+  mutate(prop_state = 100 * round(pop / sum(pop), 3)) # Percent of state's population
+
+## Get longitude and laditude for mapping counties
+acs19mapdf <- acs19group %>%
+  mutate(region = substr(GEO_ID, 11, 14),
+         region = as.numeric(region),
+         id = sub(" County$", "", county_name),
+         id = tolower(id),
+         value = prop_county)
+
+#Combine everything together
+ca_counties <- map_data("county", "california") %>% 
+  select(lon = long, lat, group, id = subregion) %>%
+  left_join(acs19mapdf, by = "id")
+
+
+```
+
+## Overview
+```{r, echo=FALSE, message=FALSE, fig.width=8, fig.height=9}
+cntylab <- ca_counties %>%
+  mutate(id = stringr::str_to_title(id)) %>%
+  group_by(id, group) %>%
+  summarise(lon = mean(lon), lat = mean(lat))
+  
+ggplot(ca_counties, aes(lon, lat, group = group)) +
+  geom_polygon(fill = NA, colour = "grey60")+
+  geom_text(data = cntylab, aes(label = id) ) +
+  theme_void() +
+  theme(strip.background = element_blank()) 
+```
+
+The population in California in 2019 was ....
+
+
+
+### Proportion Within County
+```{r cnty_prop, echo=FALSE, message=FALSE, fig.width=10}
+ggplot(ca_counties, aes(lon, lat, group = group)) +
+  geom_polygon(aes(fill = prop_county))+ # color = "white")+
+  scale_fill_viridis_c(name = "Percentage", option = "A") +
+  theme_void() +
+  theme(strip.background = element_blank()) +
+  facet_grid(. ~ age_band) + 
+  theme()
+
+```
+
+## Proportion Within Age group
+
+```{r ageprop, echo=FALSE, message=FALSE, fig.width=10}
+ggplot(ca_counties, aes(lon, lat, group = group)) +
+  geom_polygon(aes(fill = prop_gp_state))+
+  scale_fill_gradientn(name = "Percentage", colours = rev(heat.colors(2))) +
+  #scale_fill_gradient2() +
+  #scale_fill_gradientn(colours = wes_palette("Darjeeling2", 10, type = "continuous")) +
+  #scale_fill_viridis_c() +
+  theme_void() +
+  theme(strip.background = element_blank()) +
+  facet_grid(. ~ age_band)
+```
+
+## Proportion of State Population
+
+```{r stateprop, echo=FALSE, message=FALSE, fig.width=10}
+ggplot(ca_counties, aes(lon, lat, group = group)) +
+  geom_polygon(aes(fill = prop_state))+
+  scale_fill_gradientn(name = "Percentage", colours = rev(heat.colors(2))) +
+  theme_void() +
+  theme(strip.background = element_blank()) +
+  facet_grid(. ~ age_band)
+```
+
+
