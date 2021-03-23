@@ -7,7 +7,7 @@ Used the censusapi package to map population distribution across the counties an
 
 ![overall pop distribution](ca2019_pop_map.jpeg)
 
-Refer to the code here: [CA2019_agedist.Rmd](CA2019_agedist.Rmd])
+Refer to the code here: [CA2019_agedist.Rmd](CA2019_agedist.Rmd)
 
 ## 2015
-All the R files associated with 2015 was related to figuring out how to use the acs package and generate a population pyramid and time trend. (Don't think was finished.)
+All the R files associated with 2015 was related to figuring out how to use the acs package and generate a population pyramid and time trend. (Don't think this was finished.)
