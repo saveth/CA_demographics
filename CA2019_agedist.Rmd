@@ -1,7 +1,7 @@
 ---
 title: "2019 CA Population"
 author: "Savet Hong"
-date: "2/3/2021"
+date: "`r Sys.Date()`"
 output: html_document
 ---
 
@@ -43,7 +43,7 @@ agesexlab <- group_B01001 %>%
 
 
 ```{r data19, include=FALSE}
-# Get CA County Population: Sex by Age
+# Get 2019 CA County Population Estimates: Sex by Age
 acs19pop <- getCensus(
   name = "acs/acs5", 
   vintage = 2019, 
@@ -61,6 +61,32 @@ acs19pop_clean <- acs19pop %>%
                                start_age >= 18 & start_age < 65 ~ "Age 18-64",
                                start_age >= 65 ~ "Age 65+",
                                TRUE ~ "NA"))
+
+# Get Total Population and add mega region
+capop <- acs19pop_clean %>%
+  filter(gender == "Both") %>%
+  select(county, county_name, values) %>%
+  rename(Population = values) %>%
+  mutate(Population = as.numeric(Population),
+         id = sub(" County$", "", county_name),
+         north_south = case_when(id %in% c("Imperial", "Kern", "Los Angeles", "Orange",
+                                           "Riverside", "San Bernardino", "San Diego", 
+                                           "Santa Barbara", "San Luis Obispo", "Ventura")
+                                 ~ "Southern California",
+                                 TRUE ~ "Northern California"),
+         megregion = case_when(id %in% c("Alameda", "Contra Costa", "Marin", 
+                                         "Napa", "San Mateo", "Santa Clara", 
+                                         "Solano", "Sonoma", "San Francisco") ~
+                                 "Bay Area",
+                               id %in% c("Sacramento", "Yolo", "El Dorado", "Placer",
+                                         "Sutter", "Yuba", "Nevada") ~
+                                 "Greater Sacramento",
+                               id %in% c("Imperial", "Kern", "Los Angeles", "Orange",
+                                           "Riverside", "San Bernardino", "San Diego", 
+                                           "Santa Barbara", "San Luis Obispo", "Ventura")
+                                 ~ "Southern California" ,
+                               TRUE ~ "Other")) %>%
+  select(-id)
 
 # Calculate proportion
 acs19group <- acs19pop_clean %>%
@@ -91,29 +117,89 @@ ca_counties <- map_data("county", "california") %>%
 
 ```
 
-## Overview
+### Overview
+
+In 2019, California total population was about `r paste(format(round(sum(capop$Population)/1e6, 1), trim = TRUE), "million")` people, and `r paste0(100 * round(sum(capop$Population[capop$north_south=="Southern California"])/sum(capop$Population), 3), "%")` of them resided in Southern California (SoCal). In particular, Los Angeles county accounts for `r paste0(100 * round(sum(capop$Population[capop$county=="037"])/sum(capop$Population), 3), "%")` of the state's population.
+
+
 ```{r, echo=FALSE, message=FALSE, fig.width=8, fig.height=9}
 cntylab <- ca_counties %>%
   mutate(id = stringr::str_to_title(id)) %>%
   group_by(id, group) %>%
   summarise(lon = mean(lon), lat = mean(lat))
   
-ggplot(ca_counties, aes(lon, lat, group = group)) +
-  geom_polygon(fill = NA, colour = "grey60")+
+# ggplot(ca_counties, aes(lon, lat, group = group)) +
+#   geom_polygon(fill = NA, colour = "grey60") +
+#   geom_text(data = cntylab, aes(label = id) ) +
+#   theme_void() +
+#   theme(strip.background = element_blank()) 
+
+popmap <- ca_counties %>%
+  select(lon:GEO_ID) %>%
+  distinct() %>%
+  right_join(capop) %>%
+  mutate(`Population (100,000)` = round(Population/1e5, 1))
+
+p1 <- ggplot(popmap, aes(lon, lat)) +
+  geom_polygon(aes(group = group, fill = north_south), colour = "grey60") +
+  scale_fill_manual(values = c("lightblue","pink")) +
   geom_text(data = cntylab, aes(label = id) ) +
   theme_void() +
   theme(strip.background = element_blank()) 
+
+
+p2 <- ggplot(popmap, aes(lon, lat, group = group)) +
+  geom_polygon(aes(fill = `Population (100,000)`), colour = "grey60") +
+  scale_fill_viridis_c(option = "plasma", direction = -1) +
+  geom_text(data = cntylab, aes(label = id),  size = 1.5 ) +
+  theme_void() +
+  theme(strip.background = element_blank()) 
+
+#cowplot::plot_grid(p1, p2, labels = "")
+
+print(p2)
 ```
 
-The population in California in 2019 was ....
+#### Age Distribution of State Population
+
+```{r, include= FALSE}
+agreg <- left_join(acs19group, capop, by = c("county", "county_name")) %>%
+  #mutate(megregion = replace(megregion, county == "019", "Fresno")) %>%
+  ungroup()
 
 
+propreg <- agreg %>%
+  filter(age_band == "Age 18-64") %>%
+  group_by(megregion) %>%
+  summarise(pop = sum(pop), Population = sum(Population)) %>%
+  mutate(per_reg = pop / Population,
+         perall = pop / sum(Population),
+         perage = pop / sum(pop))
 
-### Proportion Within County
+```
+
+The population of Southern California is largely comprised of people aged 18-64 (`r 100 * round(propreg$per_reg[propreg$megregion == "Southern California"],3)`%). This region's working age adults (18-64) accounts for `r 100 * round(propreg$perage[propreg$megregion == "Southern California"],3)`% of all working age adults in California (`r 100 * round(propreg$perall[propreg$megregion == "Southern California"],3)`% of entire population). Other areas of the state that have high concentration of working age adults include the Bay Area (`r 100 * round(propreg$perage[propreg$megregion == "Bay Area"],3)`% of age group, `r 100 * round(propreg$perall[propreg$megregion == "Bay Area"],3)`% of state's population) and Greater Sacramento (`r 100 * round(propreg$perage[propreg$megregion == "Greater Sacramento"],3)`% of age group, `r 100 * round(propreg$perall[propreg$megregion == "Greater Sacramento"],3)`% of state's population).
+
+```{r stateprop, echo=FALSE, message=FALSE, fig.width=10}
+ggplot(ca_counties, aes(lon, lat, group = group)) +
+  geom_polygon(aes(fill = prop_state))+
+  scale_fill_gradientn(name = "Percentage", colours = rev(heat.colors(2))) +
+  theme_void() +
+  theme(strip.background = element_blank()) +
+  facet_grid(. ~ age_band)
+```
+
+
+#### Age Distribution Within County
+
+When considering each county's age population distribution, it is no surprise that each county's residents are largely working age adults (about 60%). What is interesting is that some counties have a higher share of children, mainly counties in the San Joaquin Valley. Whereas, counties on the northern and eastern parts of California have a higher share of elderly adults.
+
+
 ```{r cnty_prop, echo=FALSE, message=FALSE, fig.width=10}
 ggplot(ca_counties, aes(lon, lat, group = group)) +
   geom_polygon(aes(fill = prop_county))+ # color = "white")+
-  scale_fill_viridis_c(name = "Percentage", option = "A") +
+  scale_fill_gradientn(name = "Percentage", colours = rev(heat.colors(2))) +
+  #scale_fill_viridis_c(name = "Percentage", option = "A") +
   theme_void() +
   theme(strip.background = element_blank()) +
   facet_grid(. ~ age_band) + 
@@ -121,9 +207,12 @@ ggplot(ca_counties, aes(lon, lat, group = group)) +
 
 ```
 
-## Proportion Within Age group
 
-```{r ageprop, echo=FALSE, message=FALSE, fig.width=10}
+
+```{r ageprop, echo=FALSE, message=FALSE, fig.width=10, include=FALSE}
+
+## Distribution Within Age group
+
 ggplot(ca_counties, aes(lon, lat, group = group)) +
   geom_polygon(aes(fill = prop_gp_state))+
   scale_fill_gradientn(name = "Percentage", colours = rev(heat.colors(2))) +
@@ -135,15 +224,5 @@ ggplot(ca_counties, aes(lon, lat, group = group)) +
   facet_grid(. ~ age_band)
 ```
 
-## Proportion of State Population
-
-```{r stateprop, echo=FALSE, message=FALSE, fig.width=10}
-ggplot(ca_counties, aes(lon, lat, group = group)) +
-  geom_polygon(aes(fill = prop_state))+
-  scale_fill_gradientn(name = "Percentage", colours = rev(heat.colors(2))) +
-  theme_void() +
-  theme(strip.background = element_blank()) +
-  facet_grid(. ~ age_band)
-```
 
 
